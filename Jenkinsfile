@@ -2,39 +2,71 @@ pipeline {
     agent any
 
     environment {
-        AZURE_WEBAPP_NAME = 'react-movie-webapp-001'
-        AZURE_RG = 'rg-react-movieapp'
-        BUILD_DIR = 'build'
+        ARM_SUBSCRIPTION_ID = credentials('AZURE_SUBSCRIPTION_ID')
+        ARM_TENANT_ID       = credentials('AZURE_TENANT_ID')
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Checkout Code') {
             steps {
-                git url: 'https://github.com/AdityaNandan193/Movie_search_website.git', branch: 'master'
+                git branch: 'main', url: 'https://github.com/AdityaNandan193/Movie_search_website.git'
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Terraform Init') {
             steps {
-                bat 'npm install'
+                bat 'terraform init'
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'jenkins-azure-sp', usernameVariable: 'ARM_CLIENT_ID', passwordVariable: 'ARM_CLIENT_SECRET')]) {
+                    bat """
+                        terraform apply -auto-approve ^
+                          -var subscription_id=%ARM_SUBSCRIPTION_ID% ^
+                          -var client_id=%ARM_CLIENT_ID% ^
+                          -var client_secret=%ARM_CLIENT_SECRET% ^
+                          -var tenant_id=%ARM_TENANT_ID%
+                    """
+                }
             }
         }
 
         stage('Build React App') {
             steps {
+                bat 'npm install'
                 bat 'npm run build'
             }
         }
 
-        stage('Deploy to Azure') {
+        stage('Zip Build Folder') {
             steps {
-                withCredentials([azureServicePrincipal('jenkins-azure-sp')]) {
-                    bat '''
-                        az login --service-principal -u %AZURE_CLIENT_ID% -p %AZURE_CLIENT_SECRET% --tenant %AZURE_TENANT_ID%
-                        az webapp deploy --resource-group %AZURE_RG% --name %AZURE_WEBAPP_NAME% --src-path %BUILD_DIR% --type static
-                    '''
+                bat 'powershell Compress-Archive -Path build\\* -DestinationPath react.zip'
+            }
+        }
+
+        stage('Deploy to Azure App Service') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'jenkins-azure-sp', usernameVariable: 'ARM_CLIENT_ID', passwordVariable: 'ARM_CLIENT_SECRET')]) {
+                    bat """
+                        az login --service-principal -u %ARM_CLIENT_ID% -p %ARM_CLIENT_SECRET% --tenant %ARM_TENANT_ID%
+                        az webapp deployment source config-zip ^
+                            --resource-group my-rg-dotnet ^
+                            --name my-project-webapp-001 ^
+                            --src react.zip
+                    """
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment successful!"
+        }
+        failure {
+            echo "❌ Deployment failed! Check logs above."
         }
     }
 }
