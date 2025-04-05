@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Clone Repo') {
             steps {
-                git url: 'https://github.com/YourUsername/react-movie-search', branch: 'main'
+                git url: 'https://github.com/AdityaNandan193/Movie_search_website.git', branch: 'master'
             }
         }
 
