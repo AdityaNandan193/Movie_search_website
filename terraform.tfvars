@@ -1,0 +1,8 @@
+resource_group_name = "react-jecrc-rg"
+location            = "East US"
+app_service_plan    = "react-plan-Nandan"
+web_app_name        = "react-app-Nandan"
+subscription_id = "d45d5d5b-2bc2-4f9b-a82b-3a2e6608afb5"
+client_id       = "d4890234-515f-43c5-8204-1feb2abdb995"
+client_secret   = "GAC8Q~JdQzUoHOnjpQzYC_yOeEATQmeRGsbELcqf"
+tenant_id       = "7a325369-5eda-4d37-803c-18c97c3527ef"
