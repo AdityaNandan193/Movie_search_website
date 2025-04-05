@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    environment {
+        RESOURCE_GROUP = 'react-jecrc-rg'
+        WEBAPP_NAME = 'react-app-Nandan'
+    }
+
     stages {
         stage('Checkout Code') {
             steps {
@@ -52,14 +57,22 @@ pipeline {
             }
         }
 
-        stage('Deploy React App') {
+        stage('Build React App') {
             steps {
-                dir('react-app') {
-                    bat 'npm install'
-                    bat 'npm run build'
-                    bat 'cd .. && powershell Compress-Archive -Path react-app\\build\\* -DestinationPath react.zip'
-                }
+                // Assumes the root has package.json
+                bat 'npm install'
+                bat 'npm run build'
+            }
+        }
 
+        stage('Compress Build Folder') {
+            steps {
+                bat 'powershell Compress-Archive -Path build\\* -DestinationPath react.zip -Force'
+            }
+        }
+
+        stage('Deploy to Azure') {
+            steps {
                 withCredentials([
                     string(credentialsId: 'AZURE_CLIENT_ID', variable: 'ARM_CLIENT_ID'),
                     string(credentialsId: 'AZURE_CLIENT_SECRET', variable: 'ARM_CLIENT_SECRET'),
@@ -67,7 +80,7 @@ pipeline {
                 ]) {
                     bat """
                         az login --service-principal -u %ARM_CLIENT_ID% -p %ARM_CLIENT_SECRET% --tenant %ARM_TENANT_ID%
-                        az webapp deploy --resource-group yourResourceGroup --name yourWebAppName --src-path react.zip --type zip
+                        az webapp deploy --resource-group %RESOURCE_GROUP% --name %WEBAPP_NAME% --src-path react.zip --type zip
                     """
                 }
             }
