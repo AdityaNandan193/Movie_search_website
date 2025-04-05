@@ -2,74 +2,57 @@ pipeline {
     agent any
 
     environment {
-        AZURE_CREDENTIALS_ID = 'jenkins-azure-sp'       
-        RESOURCE_GROUP       = 'my-rg-dotnet'      
-        WEBAPP_NAME          = 'my-project-webapp-001'        
-        LOCATION             = 'East US'                
+        ARM_CLIENT_ID       = credentials('AZURE_CLIENT_ID')
+        ARM_CLIENT_SECRET   = credentials('AZURE_CLIENT_SECRET')
+        ARM_SUBSCRIPTION_ID = credentials('AZURE_SUBSCRIPTION_ID')
+        ARM_TENANT_ID       = credentials('AZURE_TENANT_ID')
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'master', url: 'https://github.com/AdityaNandan193/Movie_search_website.git'
+                git branch: 'master', url: 'https://github.com/AdityaNandan193/Movie_search_website'
             }
         }
 
-        stage('Terraform Init and Apply') {
+        stage('Terraform Init') {
             steps {
-                withCredentials([azureServicePrincipal(credentialsId: AZURE_CREDENTIALS_ID)]) {
-                    bat '''
-                        set ARM_CLIENT_ID=%AZURE_CLIENT_ID%
-                        set ARM_CLIENT_SECRET=%AZURE_CLIENT_SECRET%
-                        set ARM_SUBSCRIPTION_ID=%AZURE_SUBSCRIPTION_ID%
-                        set ARM_TENANT_ID=%AZURE_TENANT_ID%
-
-                        terraform init
-                        terraform apply -auto-approve ^
-                          -var "resource_group=%RESOURCE_GROUP%" ^
-                          -var "webapp_name=%WEBAPP_NAME%" ^
-                          -var "location=%LOCATION%"
-                    '''
-                }
+                bat 'terraform init'
             }
         }
 
-        stage('Build React App') {
-            steps {
-                bat '''
-                    npm install
-                    npm run build
-                '''
-            }
-        }
-
-        stage('Zip Build Folder') {
-            steps {
-                bat 'powershell Compress-Archive -Path build\\* -DestinationPath build.zip'
-            }
-        }
-
-        stage('Deploy to Azure App Service') {
-            steps {
-                withCredentials([azureServicePrincipal(credentialsId: AZURE_CREDENTIALS_ID)]) {
-                    bat '''
-                        az login --service-principal -u %AZURE_CLIENT_ID% -p %AZURE_CLIENT_SECRET% --tenant %AZURE_TENANT_ID%
-                        az webapp deployment source config-zip ^
-                            --resource-group %RESOURCE_GROUP% ^
-                            --name %WEBAPP_NAME% ^
-                            --src build.zip
-                    '''
-                }
-            }
-        }
+       stage('Terraform Plan') {
+    steps {
+        bat """
+            terraform plan ^
+              -var subscription_id=%ARM_SUBSCRIPTION_ID% ^
+              -var client_id=%ARM_CLIENT_ID% ^
+              -var client_secret=%ARM_CLIENT_SECRET% ^
+              -var tenant_id=%ARM_TENANT_ID%
+        """
     }
+}
 
-    post {
-        success {
-            echo "✅ Deployment successful!"
+
+        stage('Terraform Apply') {
+            steps {
+                bat 'terraform apply -auto-approve -var-file="terraform.tfvars"'
+            }
         }
-        failure {
-            echo "❌ Deployment failed! Check logs above."
+
+        stage('Deploy React App') {
+            steps {
+                dir('react-app') {
+                    bat 'npm install'
+                    bat 'npm run build'
+                    bat 'cd .. && powershell Compress-Archive -Path react-app\\build\\* -DestinationPath react.zip'
+                }
+
+                bat """
+                az login --service-principal -u %ARM_CLIENT_ID% -p %ARM_CLIENT_SECRET% --tenant %ARM_TENANT_ID%
+                az webapp deploy --resource-group ${env.resource_group_name} --name ${env.web_app_name} --src-path react.zip --type zip
+                """
+            }
         }
     }
 }
